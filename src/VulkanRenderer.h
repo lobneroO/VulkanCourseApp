@@ -51,12 +51,14 @@ private:
 	std::vector<const char*> GetRequiredExtensions();
 
 	//validation layers
+	void SetupDebugMessenger();
 	bool CheckValidationLayerSupport();
-	static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
-		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-		VkDebugUtilsMessageTypeFlagsEXT messageType,
-		const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
-		void* pUserData);
+
+	//proxy functions to create and destroy debug utils messenger by looking up the address
+	//and then calling it
+	static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+		const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
+	static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
 
 private:
 	GLFWwindow* Window = nullptr;
@@ -77,6 +79,7 @@ private:
 	VkSurfaceKHR Surface;
 
 	//validation layers
+	VkDebugUtilsMessengerEXT DebugMessenger;
 	const std::vector<const char*> validationLayers = {
 		"VK_LAYER_KHRONOS_validation"
 	};

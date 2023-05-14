@@ -1,4 +1,5 @@
 #include "VulkanRenderer.h"
+#include <cstring>
 
 VulkanRenderer::VulkanRenderer()
 {

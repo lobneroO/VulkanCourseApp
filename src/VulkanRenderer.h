@@ -47,6 +47,12 @@ private:
 	QueueFamilyIndicies GetQueueFamilies(VkPhysicalDevice physicalDevice);
 	SwapChainDetails GetSwapChainDetails(VkPhysicalDevice physicalDevice);
 
+	//adding required extensions
+	std::vector<const char*> GetRequiredExtensions();
+
+	//validation layers
+	bool CheckValidationLayerSupport();
+
 private:
 	GLFWwindow* Window = nullptr;
 
@@ -64,5 +70,16 @@ private:
 	//surface that we render to with vulkan.
 	//GLFW will take this surface and present it to the viewer
 	VkSurfaceKHR Surface;
+
+	//validation layers
+	const std::vector<const char*> validationLayers = {
+		"VK_LAYER_KHRONOS_validation"
+	};
+
+#ifdef NDEBUG
+	const bool bEnableValidationLayers = false;
+#else
+	const bool bEnableValidationLayers = true;
+#endif
 };
 

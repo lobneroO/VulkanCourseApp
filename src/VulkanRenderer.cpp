@@ -44,6 +44,12 @@ void VulkanRenderer::CleanUp()
 
 void VulkanRenderer::CreateInstance()
 {
+	//enable validation layers
+	if(bEnableValidationLayers && ! CheckValidationLayerSupport())
+	{
+			throw std::runtime_error("validation layers requested, but not available");
+	}
+
 	//information about the application itself
 	//most data here doesn't affect the program and is for developer convenience
 	VkApplicationInfo appInfo = {};
@@ -61,17 +67,8 @@ void VulkanRenderer::CreateInstance()
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	createInfo.pApplicationInfo = &appInfo;
 
-	uint32_t glfwExtensionCount = 0;
-	const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
 	//create list to hold instance extensions
-	std::vector<const char*> instanceExtensions;
-	instanceExtensions.reserve(glfwExtensionCount);
-
-	for (size_t i = 0; i < glfwExtensionCount; i++)
-	{
-		instanceExtensions.push_back(glfwExtensions[i]);
-	}
+	std::vector<const char*> instanceExtensions = GetRequiredExtensions();
 
 	//check instance extensions are supported
 	if (!CheckInstanceExtensionSupport(&instanceExtensions))
@@ -362,4 +359,50 @@ SwapChainDetails VulkanRenderer::GetSwapChainDetails(VkPhysicalDevice physicalDe
 	}
 
 	return details;
+}
+
+std::vector<const char*> VulkanRenderer::GetRequiredExtensions()
+{
+	uint32_t glfwExtensionCount = 0;
+	const char** glfwExtensions;
+	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
+	if(bEnableValidationLayers)
+	{
+		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+	}
+
+	return extensions;
+}
+
+bool VulkanRenderer::CheckValidationLayerSupport()
+{
+	uint32_t layerCount = 0;
+	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+	std::vector<VkLayerProperties> availableLayers(layerCount);
+	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+
+	for(const char* layerName : validationLayers)
+	{
+		bool layerFound = false;
+
+		for (const auto& layerProperties : availableLayers)
+		{
+				if(strcmp(layerName, layerProperties.layerName) == 0)
+				{
+					layerFound = true;
+					break;
+				}
+		}
+
+		if(!layerFound)
+		{
+			return false;
+		}
+	}
+
+	return true;
 }

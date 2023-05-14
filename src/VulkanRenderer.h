@@ -51,14 +51,19 @@ private:
 	std::vector<const char*> GetRequiredExtensions();
 
 	//validation layers
+	//first create the creation info struct (separately, so that it can be used
+	//	for both the DebugMessenger we use for general debugging, as well as the
+	//	extra debug messenger for the creation of the instance, which has to be
+	//	handled separately)
+	static void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 	void SetupDebugMessenger();
 	bool CheckValidationLayerSupport();
 
 	//proxy functions to create and destroy debug utils messenger by looking up the address
 	//and then calling it
-	static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+	static VkResult CreateDebugUtilsMessenger(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
 		const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
-	static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
+	static void DestroyDebugUtilsMessenger(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
 
 private:
 	GLFWwindow* Window = nullptr;

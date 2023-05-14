@@ -52,6 +52,11 @@ private:
 
 	//validation layers
 	bool CheckValidationLayerSupport();
+	static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
+		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+		VkDebugUtilsMessageTypeFlagsEXT messageType,
+		const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
+		void* pUserData);
 
 private:
 	GLFWwindow* Window = nullptr;

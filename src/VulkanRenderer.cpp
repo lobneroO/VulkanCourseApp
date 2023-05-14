@@ -1,5 +1,7 @@
 #include "VulkanRenderer.h"
+
 #include <cstring>
+#include <iostream>
 
 VulkanRenderer::VulkanRenderer()
 {
@@ -47,7 +49,11 @@ void VulkanRenderer::CreateInstance()
 	//enable validation layers
 	if(bEnableValidationLayers && ! CheckValidationLayerSupport())
 	{
-			throw std::runtime_error("validation layers requested, but not available");
+		throw std::runtime_error("validation layers requested, but not available");
+	}
+	else if (bEnableValidationLayers)
+	{
+		std::cout << "Validation layers are enabled!" << std::endl;
 	}
 
 	//information about the application itself
@@ -405,4 +411,15 @@ bool VulkanRenderer::CheckValidationLayerSupport()
 	}
 
 	return true;
+}
+
+VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
+		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+		VkDebugUtilsMessageTypeFlagsEXT messageType,
+		const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
+		void* pUserData)
+{
+	std::cerr << "validation layer: " << callbackData->pMessage << std::endl;
+
+	return VK_FALSE;
 }

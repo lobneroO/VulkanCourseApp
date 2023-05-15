@@ -33,6 +33,7 @@ private:
 	void CreateInstance();
 	void CreateLogicalDevice();
 	void CreateSurface();
+	void CreateSwapChain();
 
 	// vk getter functions
 	void GetPhysicalDevice();
@@ -46,6 +47,14 @@ private:
 	//	vk support getter functions
 	QueueFamilyIndicies GetQueueFamilies(VkPhysicalDevice physicalDevice);
 	SwapChainDetails GetSwapChainDetails(VkPhysicalDevice physicalDevice);
+
+	// support functions for choosing best options
+	VkSurfaceFormatKHR ChooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats);
+	VkPresentModeKHR ChooseBestPresentationMode(const std::vector<VkPresentModeKHR>& modes);
+	VkExtent2D ChooseSwapChainExtent(const VkSurfaceCapabilitiesKHR &surfaceCapabilities);
+
+	// support create functions
+	VkImageView CreateImageView(const VkImage& image, const VkFormat& format, const VkImageAspectFlags& aspectFlags);
 
 	//adding required extensions
 	std::vector<const char*> GetRequiredExtensions();
@@ -68,7 +77,8 @@ private:
 private:
 	GLFWwindow* Window = nullptr;
 
-	//vulkan components
+	// vulkan components
+	// - Main
 	VkInstance Instance;
 	struct {
 		VkPhysicalDevice PhysicalDevice;
@@ -82,6 +92,13 @@ private:
 	//surface that we render to with vulkan.
 	//GLFW will take this surface and present it to the viewer
 	VkSurfaceKHR Surface;
+
+	VkSwapchainKHR Swapchain;
+	std::vector<SwapchainImage> SwapchainImages;
+
+	// - Utility
+	VkFormat SwapchainImageFormat;
+	VkExtent2D SwapchainResolution;
 
 	//validation layers
 	VkDebugUtilsMessengerEXT DebugMessenger;

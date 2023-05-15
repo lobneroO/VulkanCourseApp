@@ -32,3 +32,9 @@ struct SwapChainDetails
 	//modes how images should be presented to screen
 	std::vector<VkPresentModeKHR> PresentationModes;
 };
+
+struct SwapchainImage
+{
+	VkImage Image;
+	VkImageView ImageView;
+};

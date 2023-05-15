@@ -2,6 +2,8 @@
 
 #include <cstring>
 #include <iostream>
+#include <limits>
+#include <algorithm>
 
 VulkanRenderer::VulkanRenderer()
 {
@@ -29,6 +31,7 @@ int32_t VulkanRenderer::Init(GLFWwindow* newWindow)
 		CreateSurface();		
 		GetPhysicalDevice();
 		CreateLogicalDevice();
+		CreateSwapChain();
 	}
 	catch (const std::runtime_error &e)
 	{
@@ -42,6 +45,11 @@ int32_t VulkanRenderer::Init(GLFWwindow* newWindow)
 
 void VulkanRenderer::CleanUp()
 {
+	for(SwapchainImage image : SwapchainImages)
+	{
+		vkDestroyImageView(MainDevice.LogicalDevice, image.ImageView, nullptr);
+	}
+	vkDestroySwapchainKHR(MainDevice.LogicalDevice, Swapchain, nullptr);
 	vkDestroySurfaceKHR(Instance, Surface, nullptr);
 	vkDestroyDevice(MainDevice.LogicalDevice, nullptr);
 	if(bEnableValidationLayers)
@@ -177,6 +185,101 @@ void VulkanRenderer::CreateSurface()
 	if (result != VK_SUCCESS)
 	{
 		throw std::runtime_error("Failed to create a surface!");
+	}
+}
+
+void VulkanRenderer::CreateSwapChain()
+{
+	// get swapchain details so we can pick best settings
+	SwapChainDetails swapChainDetails = GetSwapChainDetails(MainDevice.PhysicalDevice);
+
+	// find optimal values
+	VkSurfaceFormatKHR format = ChooseBestSurfaceFormat(swapChainDetails.SurfaceFormats);
+	VkPresentModeKHR mode = ChooseBestPresentationMode(swapChainDetails.PresentationModes);
+	VkExtent2D resolution = ChooseSwapChainExtent(swapChainDetails.SurfaceCapabilities);
+
+	// get num images in swap chain. get 1 more than min to allow triple buffering
+	uint32_t imageCount = swapChainDetails.SurfaceCapabilities.minImageCount + 1;
+
+	if(swapChainDetails.SurfaceCapabilities.maxImageCount > 0
+		&& swapChainDetails.SurfaceCapabilities.maxImageCount < imageCount)
+	{
+		imageCount = swapChainDetails.SurfaceCapabilities.maxImageCount;
+	}
+
+	//create swapchain
+	VkSwapchainCreateInfoKHR createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	createInfo.surface = Surface;
+	createInfo.imageFormat = format.format;
+	createInfo.imageColorSpace = format.colorSpace;
+	createInfo.presentMode = mode;
+	createInfo.imageExtent = resolution;
+	createInfo.minImageCount = imageCount;
+	//number of layers for each image in chain
+	createInfo.imageArrayLayers = 1;
+	createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	createInfo.preTransform = swapChainDetails.SurfaceCapabilities.currentTransform;
+	createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	//whether to clip parts of image not in view (e.g. behind other window, off screen, ...)
+	createInfo.clipped = VK_TRUE;
+
+	// get queue family indices
+	QueueFamilyIndicies indices = GetQueueFamilies(MainDevice.PhysicalDevice);
+
+	// if graphics and presentation families are different, then swapchain must
+	// images be shared between families
+	if(indices.GraphicsFamily != indices.PresentationFamily)
+	{
+		//queues to share between
+		uint32_t queueFamilyIndices[] = {
+			(uint32_t) indices.GraphicsFamily,
+			(uint32_t) indices.PresentationFamily
+		};
+
+		createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		createInfo.queueFamilyIndexCount = 2;
+		createInfo.pQueueFamilyIndices = queueFamilyIndices;
+	}
+	else
+	{
+		createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		//the next two don't have to be specified for this case,
+		//just doing it for clariy
+		createInfo.queueFamilyIndexCount = 0;
+		createInfo.pQueueFamilyIndices = nullptr;
+	}
+
+	// we could take over work/responsibilities from an older swap chain,
+	// useful e.g. when resizing the window, which means
+	// to destory the old swapchain and creatign a new one
+	createInfo.oldSwapchain = VK_NULL_HANDLE;
+
+	VkResult result = vkCreateSwapchainKHR(MainDevice.LogicalDevice, &createInfo, nullptr, &Swapchain);
+	if(result != VK_SUCCESS)
+	{
+		throw std::runtime_error("failed to create a swapchain!");
+	}
+
+	//store for later reference
+	SwapchainImageFormat = format.format;
+	SwapchainResolution = resolution;
+
+	// get swapchain images
+	uint32_t swapchainImageCount;
+	vkGetSwapchainImagesKHR(MainDevice.LogicalDevice, Swapchain, &swapchainImageCount, nullptr);
+
+	std::vector<VkImage> images(swapchainImageCount);
+	vkGetSwapchainImagesKHR(MainDevice.LogicalDevice, Swapchain, &swapchainImageCount, images.data());
+
+	for(VkImage image : images)
+	{
+		//store image handle (note that VkImage is just uint64_t, i.e. an index and we can just copy the value
+		SwapchainImage scImage = {};
+		scImage.Image = image;
+		scImage.ImageView = CreateImageView(image, SwapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+
+		SwapchainImages.push_back(scImage);
 	}
 }
 
@@ -385,6 +488,104 @@ SwapChainDetails VulkanRenderer::GetSwapChainDetails(VkPhysicalDevice physicalDe
 	}
 
 	return details;
+}
+
+VkSurfaceFormatKHR VulkanRenderer::ChooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats)
+{
+	// best format is subjective, but ours will be:
+	//	Format:		VK_FORMAT_R8G8B8A8_UNORM (VK_FORMAT_B8G8R8A8_UNORM as backup)
+	//	colorspace:	VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+
+	if(formats.size() == 1 && formats[0].format == VK_FORMAT_UNDEFINED)
+	{
+		//this will mean: all formats are supported
+		return { VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
+	}
+
+	for(const auto& format : formats)
+	{
+		if((format.format == VK_FORMAT_R8G8B8A8_UNORM || format.format == VK_FORMAT_B8G8R8A8_UNORM)
+			&& format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+		{
+			return format;
+		}
+	}
+
+	return formats[0];
+}
+
+VkPresentModeKHR VulkanRenderer::ChooseBestPresentationMode(const std::vector<VkPresentModeKHR>& modes)
+{
+	for(const auto& presentationMode : modes)
+	{
+		if(presentationMode == VK_PRESENT_MODE_MAILBOX_KHR)
+		{
+			return presentationMode;
+		}
+	}
+
+	// according to the vulkan spec, this always has to be available.
+	// therefore it can be used as a back up
+	return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+VkExtent2D VulkanRenderer::ChooseSwapChainExtent(const VkSurfaceCapabilitiesKHR &surfaceCapabilities)
+{
+	if(surfaceCapabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+	{
+		return surfaceCapabilities.currentExtent;
+	}
+	else
+	{
+		int32_t width, height;
+		glfwGetFramebufferSize(Window, &width, &height);
+
+		VkExtent2D newExtent = {};
+		newExtent.width = static_cast<uint32_t>(width);
+		newExtent.height = static_cast<uint32_t>(height);
+
+		// make sure the extent is within max and min of the surface
+		newExtent.width = std::max(surfaceCapabilities.minImageExtent.width,
+								   std::min(surfaceCapabilities.maxImageExtent.width, newExtent.width));
+		newExtent.height = std::max(surfaceCapabilities.minImageExtent.height,
+									std::min(surfaceCapabilities.maxImageExtent.height, newExtent.height));
+
+		return newExtent;
+	}
+}
+
+VkImageView VulkanRenderer::CreateImageView(const VkImage& image, const VkFormat& format, const VkImageAspectFlags& aspectFlags)
+{
+	VkImageViewCreateInfo createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	createInfo.image = image;
+	createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	createInfo.format = format;
+	//setup swizzle if desired (identity -> no remapping)
+	createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+	// subresources allow the view ti view only a part of an image
+	createInfo.subresourceRange.aspectMask = aspectFlags;
+	//start mip map level to view from
+	createInfo.subresourceRange.baseMipLevel = 0;
+	//number of mip map level to view
+	createInfo.subresourceRange.levelCount = 1;
+	//start array layer to view from
+	createInfo.subresourceRange.baseArrayLayer = 0;
+	//number of array layers
+	createInfo.subresourceRange.layerCount = 1;
+
+	VkImageView imageView;
+	VkResult result = vkCreateImageView(MainDevice.LogicalDevice, &createInfo, nullptr, &imageView);
+	if(result != VK_SUCCESS)
+	{
+		throw std::runtime_error("failed to create an image view!");
+	}
+
+	return imageView;
 }
 
 std::vector<const char*> VulkanRenderer::GetRequiredExtensions()

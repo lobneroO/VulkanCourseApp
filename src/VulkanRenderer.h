@@ -34,6 +34,8 @@ private:
 	void CreateLogicalDevice();
 	void CreateSurface();
 	void CreateSwapChain();
+	void CreateRenderPass();
+	void CreateGraphicsPipeline();
 
 	// vk getter functions
 	void GetPhysicalDevice();
@@ -55,9 +57,16 @@ private:
 
 	// support create functions
 	VkImageView CreateImageView(const VkImage& image, const VkFormat& format, const VkImageAspectFlags& aspectFlags);
+	VkShaderModule CreateShaderModule(const std::vector<char> &code);
 
 	//adding required extensions
 	std::vector<const char*> GetRequiredExtensions();
+
+	static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
+		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+		VkDebugUtilsMessageTypeFlagsEXT messageType,
+		const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
+		void* pUserData);
 
 	//validation layers
 	//first create the creation info struct (separately, so that it can be used
@@ -95,6 +104,11 @@ private:
 
 	VkSwapchainKHR Swapchain;
 	std::vector<SwapchainImage> SwapchainImages;
+
+	// - Pipeline
+	VkPipeline GraphicsPipeline;
+	VkPipelineLayout PipelineLayout;
+	VkRenderPass RenderPass;
 
 	// - Utility
 	VkFormat SwapchainImageFormat;

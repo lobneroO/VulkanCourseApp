@@ -45,6 +45,7 @@ int main()
 	while (!glfwWindowShouldClose(Window))
 	{
 		glfwPollEvents();
+		Renderer.Draw();
 	}
 
 	Renderer.CleanUp();

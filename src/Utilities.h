@@ -7,6 +7,8 @@
 
 namespace fs = std::filesystem;
 
+const uint32_t MAX_FRAME_DRAWS = 2;
+
 const std::vector<const char*> DeviceExtensions = {
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };

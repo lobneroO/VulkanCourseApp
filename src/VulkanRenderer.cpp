@@ -35,6 +35,11 @@ int32_t VulkanRenderer::Init(GLFWwindow* newWindow)
 		CreateSwapChain();
 		CreateRenderPass();
 		CreateGraphicsPipeline();
+		CreateFramebuffers();
+		CreateCommandPool();
+		CreateCommandBuffers();
+		RecordCommands();
+		CreateSynchronizationObjects();
 	}
 	catch (const std::runtime_error &e)
 	{
@@ -46,8 +51,88 @@ int32_t VulkanRenderer::Init(GLFWwindow* newWindow)
 	return 0;
 }
 
+void VulkanRenderer::Draw()
+{
+	// 1. Get next available image to draw to and set something to signal
+	//		when we're finished with the image (-> semaphore)
+	// 2. Submit command buffer to queue for execution,
+	//		making sure it waits for the image to be signalled as available before drawing
+	//		and signals when it has finished rendering
+	// 3. Present image to screen when it has signalled finished recording
+
+	// waiting for, but not closing fence!
+	vkWaitForFences(MainDevice.LogicalDevice, 1, &DrawFences[CurrentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max());
+
+	// actually close fence
+	vkResetFences(MainDevice.LogicalDevice, 1, &DrawFences[CurrentFrame]);
+
+	// - Get next image (index)
+	uint32_t imageIndex = 0;
+	// signal ImageAvailable, when done
+	vkAcquireNextImageKHR(MainDevice.LogicalDevice, Swapchain, std::numeric_limits<uint64_t>::max(), ImagesAvailable[CurrentFrame], VK_NULL_HANDLE, &imageIndex);
+
+	// - Submit cmd buffer to render (this is the actual drawing! but not presented to screen yet)
+	VkSubmitInfo submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &ImagesAvailable[CurrentFrame];
+	// the pipeline will continue execution until the fragment shader, before it waits for the ImageAvailable
+	// (rather than waiting at this point immediately
+	// --> stages to check semaphores at
+	VkPipelineStageFlags waitStages[] = {
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+	};
+	submitInfo.pWaitDstStageMask = waitStages;
+	//don't submit all cmd buffers at once, since we want to use one per draw call (-> triple buffering)
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &CommandBuffers[imageIndex];
+	// number of semaphores to signale when cmd buffer finished
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &RendersFinished[CurrentFrame];
+
+	// fence -> when it has finished drawing, signal(/open) the fence
+	VkResult result = vkQueueSubmit(GraphicsQueue, 1, &submitInfo, DrawFences[CurrentFrame]);
+	if(result != VK_SUCCESS)
+	{
+		throw std::runtime_error("failed to submit cmd buffer to queue!");
+	}
+
+	// - Present rendered image to screen
+	VkPresentInfoKHR presentInfo = {};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = &RendersFinished[CurrentFrame];
+	// number of swapchains to present to
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = &Swapchain;
+	presentInfo.pImageIndices = &imageIndex;
+
+	result = vkQueuePresentKHR(GraphicsQueue, &presentInfo);
+	if(result != VK_SUCCESS)
+	{
+		throw std::runtime_error("failed to present image!");
+	}
+
+	// get next frame (not image!)
+	CurrentFrame = (CurrentFrame + 1) % MAX_FRAME_DRAWS;
+}
+
 void VulkanRenderer::CleanUp()
 {
+	// wait until no actions are being run on device before destroying
+	vkDeviceWaitIdle(MainDevice.LogicalDevice);
+
+	for(uint32_t i = 0; i < MAX_FRAME_DRAWS; i++)
+	{
+		vkDestroyFence(MainDevice.LogicalDevice, DrawFences[i], nullptr);
+		vkDestroySemaphore(MainDevice.LogicalDevice, RendersFinished[i], nullptr);
+		vkDestroySemaphore(MainDevice.LogicalDevice, ImagesAvailable[i], nullptr);
+	}
+	vkDestroyCommandPool(MainDevice.LogicalDevice, GraphicsCommandPool, nullptr);
+	for(auto fb : SwapchainFramebuffers)
+	{
+		vkDestroyFramebuffer(MainDevice.LogicalDevice, fb, nullptr);
+	}
 	vkDestroyPipeline(MainDevice.LogicalDevice, GraphicsPipeline, nullptr);
 	vkDestroyPipelineLayout(MainDevice.LogicalDevice, PipelineLayout, nullptr);
 	vkDestroyRenderPass(MainDevice.LogicalDevice, RenderPass, nullptr);
@@ -581,6 +666,168 @@ void VulkanRenderer::CreateGraphicsPipeline()
 	// destroy shader modules, as they are no longer needed after pipeline creation
 	vkDestroyShaderModule(MainDevice.LogicalDevice, fragmentShaderModule, nullptr);
 	vkDestroyShaderModule(MainDevice.LogicalDevice, vertexShaderModule, nullptr);
+}
+
+void VulkanRenderer::CreateFramebuffers()
+{
+	SwapchainFramebuffers.resize(SwapchainImages.size());
+
+	// create a framebuffer for each swapchain image
+	for(size_t i = 0; i < SwapchainFramebuffers.size(); i++)
+	{
+		std::array<VkImageView, 1> attachments = {
+			SwapchainImages[i].ImageView
+		};
+
+		VkFramebufferCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		createInfo.renderPass = RenderPass;
+		// attachments are 1:1 with the render pass attachments
+		createInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+		createInfo.pAttachments = attachments.data();
+		createInfo.width = SwapchainResolution.width;
+		createInfo.height = SwapchainResolution.height;
+		createInfo.layers = 1;
+
+		VkResult result = vkCreateFramebuffer(MainDevice.LogicalDevice, &createInfo, nullptr, &SwapchainFramebuffers[i]);
+		if(result != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to create a framebuffer!");
+		}
+	}
+}
+
+void VulkanRenderer::CreateCommandPool()
+{
+	// get indices of queue families from device
+	QueueFamilyIndicies queueFamilyIndices = GetQueueFamilies(MainDevice.PhysicalDevice);
+
+	VkCommandPoolCreateInfo createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	createInfo.queueFamilyIndex = queueFamilyIndices.GraphicsFamily; 	//queue family type that buffers from this command pool will used
+
+	// create a GRAPHICS QUEUE FAMILY command pool
+	VkResult result = vkCreateCommandPool(MainDevice.LogicalDevice, &createInfo, nullptr, &GraphicsCommandPool);
+	if(result != VK_SUCCESS)
+	{
+		throw std::runtime_error("failed to create a command pool!");
+	}
+}
+
+void VulkanRenderer::CreateCommandBuffers()
+{
+	// resize command buffer count to have onef or each frame buffer
+	CommandBuffers.resize(SwapchainFramebuffers.size());
+
+	// the command buffers exist in the command pool already, therefore allocate rather than create
+	VkCommandBufferAllocateInfo allocateInfo = {};
+	allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocateInfo.commandPool = GraphicsCommandPool;
+	// Primary: directly called by queue. 	Secondary: can't be called by queue, but by other command buffer (i.e. by a primary)
+	//											-> called by "vkCmdExecuteCommands" from Primary cmd buffer
+	allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	// don't allocate cmd buffers in loop, as they all have the same setup. allocate all of them at once
+	allocateInfo.commandBufferCount = static_cast<uint32_t>(CommandBuffers.size());
+
+	// allocate command buffers and place handles in array of buffers
+	// since this is allocated rather than created, no destroy is needed
+	VkResult result = vkAllocateCommandBuffers(MainDevice.LogicalDevice, &allocateInfo, CommandBuffers.data());
+	if(result != VK_SUCCESS)
+	{
+		throw std::runtime_error("failed to allocate command buffers!");
+	}
+}
+
+void VulkanRenderer::CreateSynchronizationObjects()
+{
+	ImagesAvailable.resize(MAX_FRAME_DRAWS);
+	RendersFinished.resize(MAX_FRAME_DRAWS);
+	DrawFences.resize(MAX_FRAME_DRAWS);
+
+	// semaphore creation information
+	VkSemaphoreCreateInfo semaphoreCreateInfo = {};
+	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+	VkFenceCreateInfo fenceCreateInfo = {};
+	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	// fence should be open before rendering (otherwise we block draw, since it waits for open)
+	fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+	for(uint32_t i = 0; i < MAX_FRAME_DRAWS; i++)
+	{
+		if(vkCreateSemaphore(MainDevice.LogicalDevice, &semaphoreCreateInfo, nullptr, &ImagesAvailable[i]) != VK_SUCCESS
+			|| vkCreateSemaphore(MainDevice.LogicalDevice, &semaphoreCreateInfo, nullptr, &RendersFinished[i]) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to create a semaphore!");
+		}
+
+		if(vkCreateFence(MainDevice.LogicalDevice, &fenceCreateInfo, nullptr, &DrawFences[i]) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to create a fence!");
+		}
+	}
+}
+
+void VulkanRenderer::RecordCommands()
+{
+	// information about how to begin _each_ command buffer (for our use case, this can be shared)
+	VkCommandBufferBeginInfo bufferBeginInfo = {};
+	bufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	// SIMULTANEOUS_USE_BIT: buffer can be resubmitted when it has already been submitted and is awaiting execution
+	// but with fences, we never run into this, therefore don't use it
+	// bufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+
+	// information about how to begin a render pass (only needed for graphical application)
+	VkRenderPassBeginInfo renderPassBeginInfo = {};
+	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassBeginInfo.renderPass = RenderPass;
+	renderPassBeginInfo.renderArea.offset = {0, 0};
+	renderPassBeginInfo.renderArea.extent = SwapchainResolution;
+	// the load op means a clear at the start, therefore clear values are needed
+	VkClearValue clearValues[] = {
+		{0.6f, 0.65f, 0.4f, 1.0f}
+	};
+	renderPassBeginInfo.pClearValues = clearValues;
+	renderPassBeginInfo.clearValueCount = 1;
+
+	for(size_t i = 0; i < CommandBuffers.size(); i++)
+	{
+		renderPassBeginInfo.framebuffer = SwapchainFramebuffers[i];
+
+		// start recording commands to command buffer
+		VkResult result = vkBeginCommandBuffer(CommandBuffers[i], &bufferBeginInfo);
+		if(result != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to start recording a command buffer!");
+		}
+		{	// command buffer
+
+			// begin render pass
+			// VK_SUBPASS_CONTENTS_INLINE: all commands are contained in this cmd buffer (no secondary cmd buffers)
+			vkCmdBeginRenderPass(CommandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+			//begin render pass will "excute" render pass' load op
+			//and go to the first subpass
+			{
+				//if you have multiple objects to render, you would have different command buffers to bind
+				//and loop through those here:
+				//for(auto object : objectList){...
+				//		(changing the object list -> rerecord the command buffer. recording this is not expensive!)
+				vkCmdBindPipeline(CommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
+
+				// execute pipeline
+				vkCmdDraw(CommandBuffers[i], 3, 1, 0, 0);
+			}
+			// end render pass (will "execute" render pass' store op)
+			vkCmdEndRenderPass(CommandBuffers[i]);
+
+		}
+		// stop recording to command buffer
+		result = vkEndCommandBuffer(CommandBuffers[i]);
+		if(result != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to end recording a command buffer!");
+		}
+	}
 }
 
 void VulkanRenderer::GetPhysicalDevice()

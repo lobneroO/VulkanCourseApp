@@ -25,37 +25,46 @@ public:
 
 	int32_t Init(GLFWwindow* newWindow);
 
+	void Draw();
+
 	void CleanUp();
 
 private:
 	//vulkan functions
-	// vk create functions
+	// - vk create functions
 	void CreateInstance();
 	void CreateLogicalDevice();
 	void CreateSurface();
 	void CreateSwapChain();
 	void CreateRenderPass();
 	void CreateGraphicsPipeline();
+	void CreateFramebuffers();
+	void CreateCommandPool();
+	void CreateCommandBuffers();
+	void CreateSynchronizationObjects();
 
-	// vk getter functions
+	// -  record functions
+	void RecordCommands();
+
+	// - vk getter functions
 	void GetPhysicalDevice();
 
-	// vk support functions
-	//	vk support checker functions
+	// - vk support functions
+	//	 - vk support checker functions
 	bool CheckInstanceExtensionSupport(std::vector<const char*>* checkExtensions);
 	bool CheckDeviceExtensionSupport(VkPhysicalDevice physicalDevice);
 	bool CheckPhysicalDeviceSuitable(const VkPhysicalDevice& device);
 
-	//	vk support getter functions
+	//	 - vk support getter functions
 	QueueFamilyIndicies GetQueueFamilies(VkPhysicalDevice physicalDevice);
 	SwapChainDetails GetSwapChainDetails(VkPhysicalDevice physicalDevice);
 
-	// support functions for choosing best options
+	// - support functions for choosing best options
 	VkSurfaceFormatKHR ChooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats);
 	VkPresentModeKHR ChooseBestPresentationMode(const std::vector<VkPresentModeKHR>& modes);
 	VkExtent2D ChooseSwapChainExtent(const VkSurfaceCapabilitiesKHR &surfaceCapabilities);
 
-	// support create functions
+	// - support create functions
 	VkImageView CreateImageView(const VkImage& image, const VkFormat& format, const VkImageAspectFlags& aspectFlags);
 	VkShaderModule CreateShaderModule(const std::vector<char> &code);
 
@@ -86,6 +95,8 @@ private:
 private:
 	GLFWwindow* Window = nullptr;
 
+	uint32_t CurrentFrame = 0;
+
 	// vulkan components
 	// - Main
 	VkInstance Instance;
@@ -103,16 +114,27 @@ private:
 	VkSurfaceKHR Surface;
 
 	VkSwapchainKHR Swapchain;
+	//the following three are 1:1 connected. One framebuffer per image, one commandbuffer per framebuffer
 	std::vector<SwapchainImage> SwapchainImages;
+	std::vector<VkFramebuffer> SwapchainFramebuffers;		//one framebuffer per swapchain image
+	std::vector<VkCommandBuffer> CommandBuffers;
 
 	// - Pipeline
 	VkPipeline GraphicsPipeline;
 	VkPipelineLayout PipelineLayout;
 	VkRenderPass RenderPass;
 
+	// - Pools
+	VkCommandPool GraphicsCommandPool;
+
 	// - Utility
 	VkFormat SwapchainImageFormat;
 	VkExtent2D SwapchainResolution;
+
+	// - Synchronisation
+	std::vector<VkSemaphore> ImagesAvailable;
+	std::vector<VkSemaphore> RendersFinished;
+	std::vector<VkFence> DrawFences;
 
 	//validation layers
 	VkDebugUtilsMessengerEXT DebugMessenger;

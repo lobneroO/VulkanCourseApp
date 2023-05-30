@@ -20,6 +20,7 @@ struct Vertex
 {
 	// vertex position
 	glm::vec3 Position;
+	glm::vec3 Colour;
 };
 
 //indices of the locations of queue families (if they exist at all)

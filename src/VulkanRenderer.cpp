@@ -35,13 +35,13 @@ int32_t VulkanRenderer::Init(GLFWwindow* newWindow)
 
 		// create a mesh
 		std::vector<Vertex> meshVertices = {
-			{{0.4, -0.4, 0.0}},
-			{{0.4, 0.4, 0.0}},
-			{{-0.4, 0.4, 0.0}},
+			{{0.4, -0.4, 0.0},		{1.0f, 0.0f, 0.0f}},
+			{{0.4, 0.4, 0.0},		{0.0f, 1.0f, 0.0f}},
+			{{-0.4, 0.4, 0.0},		{0.0f, 0.0f, 1.0f}},
 
-			{{-0.4, 0.4, 0.0}},
-			{{-0.4, -0.4, 0.0}},
-			{{0.4, -0.4, 0.0}}
+			{{-0.4, 0.4, 0.0},		{0.0f, 0.0f, 1.0f}},
+			{{-0.4, -0.4, 0.0},		{1.0f, 1.0f, 0.0f}},
+			{{0.4, -0.4, 0.0},		{1.0f, 0.0f, 0.0f}}
 		};
 		FirstMesh = Mesh(MainDevice.PhysicalDevice, MainDevice.LogicalDevice, &meshVertices);
 
@@ -519,7 +519,7 @@ void VulkanRenderer::CreateGraphicsPipeline()
 
 	// definition of the individual attributes (i.e. pos is an attribute, colour is one, ...)
 	// within the vertex: size and position in struct
-	std::array<VkVertexInputAttributeDescription, 1> attributeDescriptions;
+	std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions;
 
 	// position attribute
 	attributeDescriptions[0].binding = 0; 							// binding can be set in the shader as well,
@@ -528,6 +528,12 @@ void VulkanRenderer::CreateGraphicsPipeline()
 	attributeDescriptions[0].location = 0;
 	attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 	attributeDescriptions[0].offset = offsetof(Vertex, Position);	// the stride to start reading in the struct
+
+	// colour attribute
+	attributeDescriptions[1].binding = 0;
+	attributeDescriptions[1].location = 1;
+	attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+	attributeDescriptions[1].offset = offsetof(Vertex, Colour);
 
 	VkPipelineVertexInputStateCreateInfo vertInputCreateInfo = {};
 	{

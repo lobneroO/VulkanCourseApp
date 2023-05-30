@@ -97,7 +97,7 @@ private:
 	GLFWwindow* Window = nullptr;
 
 	// Scene Objects
-	Mesh FirstMesh;
+	std::vector<Mesh> MeshList;
 
 	uint32_t CurrentFrame = 0;
 

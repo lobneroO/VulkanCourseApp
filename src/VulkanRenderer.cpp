@@ -32,6 +32,19 @@ int32_t VulkanRenderer::Init(GLFWwindow* newWindow)
 		CreateSurface();		
 		GetPhysicalDevice();
 		CreateLogicalDevice();
+
+		// create a mesh
+		std::vector<Vertex> meshVertices = {
+			{{0.4, -0.4, 0.0}},
+			{{0.4, 0.4, 0.0}},
+			{{-0.4, 0.4, 0.0}},
+
+			{{-0.4, 0.4, 0.0}},
+			{{-0.4, -0.4, 0.0}},
+			{{0.4, -0.4, 0.0}}
+		};
+		FirstMesh = Mesh(MainDevice.PhysicalDevice, MainDevice.LogicalDevice, &meshVertices);
+
 		CreateSwapChain();
 		CreateRenderPass();
 		CreateGraphicsPipeline();
@@ -121,6 +134,8 @@ void VulkanRenderer::CleanUp()
 {
 	// wait until no actions are being run on device before destroying
 	vkDeviceWaitIdle(MainDevice.LogicalDevice);
+
+	FirstMesh.DestroyVertexBuffer();
 
 	for(uint32_t i = 0; i < MAX_FRAME_DRAWS; i++)
 	{
@@ -491,16 +506,38 @@ void VulkanRenderer::CreateGraphicsPipeline()
 		vertexShaderCreateInfo, fragmentShaderCreateInfo
 	};
 
-	// -- Vertex input (TODO: add vertex descriptions when resources created)
+	// -- Vertex input
+
+	// how the data for single vertex (pos, colour, texCoords, ...) is as a whole
+	VkVertexInputBindingDescription bindingDescr = {};
+	bindingDescr.binding = 0;									// can bind multiple streams of data, this defines which one
+	bindingDescr.stride = sizeof(Vertex);						// size of single vertex object (i.e. all attributes!)
+	bindingDescr.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;		// how to move between data after each vertex
+																// e.g. instancing can be done by send always using first vertex
+																// of each instance, then second vertex of each index and so forth
+																// (VK_VERTEX_INPUT_RATE_INSTANCE)
+
+	// definition of the individual attributes (i.e. pos is an attribute, colour is one, ...)
+	// within the vertex: size and position in struct
+	std::array<VkVertexInputAttributeDescription, 1> attributeDescriptions;
+
+	// position attribute
+	attributeDescriptions[0].binding = 0; 							// binding can be set in the shader as well,
+																	// but needs to match binding description binding
+																	// in the shader, layout(binding = 0, location = 0), but binding = 0 is default
+	attributeDescriptions[0].location = 0;
+	attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+	attributeDescriptions[0].offset = offsetof(Vertex, Position);	// the stride to start reading in the struct
+
 	VkPipelineVertexInputStateCreateInfo vertInputCreateInfo = {};
 	{
 		vertInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 		// list of vertex binding descriptions (data spacing / stride)
-		vertInputCreateInfo.vertexBindingDescriptionCount = 0;
-		vertInputCreateInfo.pVertexBindingDescriptions = nullptr;
+		vertInputCreateInfo.vertexBindingDescriptionCount = 1;
+		vertInputCreateInfo.pVertexBindingDescriptions = &bindingDescr;
 		// list of vertex attribute descriptions (data format and where to bind to / from)
-		vertInputCreateInfo.vertexAttributeDescriptionCount = 0;
-		vertInputCreateInfo.pVertexAttributeDescriptions = nullptr;
+		vertInputCreateInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+		vertInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 	}
 
 	// -- Input assembly
@@ -814,8 +851,17 @@ void VulkanRenderer::RecordCommands()
 				//		(changing the object list -> rerecord the command buffer. recording this is not expensive!)
 				vkCmdBindPipeline(CommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
 
+				// buffers to bind for drawing
+				VkBuffer vertexBuffers[] = { FirstMesh.GetVertexBuffer() };
+
+				// offsets into buffers being bound
+				VkDeviceSize offsets[] = { 0 };
+
+				// command to bind vertex buffer before drawing with them
+				vkCmdBindVertexBuffers(CommandBuffers[i], 0, 1, vertexBuffers, offsets);
+
 				// execute pipeline
-				vkCmdDraw(CommandBuffers[i], 3, 1, 0, 0);
+				vkCmdDraw(CommandBuffers[i], static_cast<uint32_t>(FirstMesh.GetVertexCount()), 1, 0, 0);
 			}
 			// end render pass (will "execute" render pass' store op)
 			vkCmdEndRenderPass(CommandBuffers[i]);

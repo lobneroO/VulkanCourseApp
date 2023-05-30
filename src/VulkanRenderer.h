@@ -15,6 +15,7 @@
 #include <vector>
 #include <set>
 
+#include "Mesh.h"
 #include "Utilities.h"
 
 class VulkanRenderer
@@ -94,6 +95,9 @@ private:
 
 private:
 	GLFWwindow* Window = nullptr;
+
+	// Scene Objects
+	Mesh FirstMesh;
 
 	uint32_t CurrentFrame = 0;
 

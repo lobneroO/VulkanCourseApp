@@ -5,12 +5,21 @@
 #include <cstring>
 #include <filesystem>
 
+#include <glm/glm.hpp>
+
 namespace fs = std::filesystem;
 
 const uint32_t MAX_FRAME_DRAWS = 2;
 
 const std::vector<const char*> DeviceExtensions = {
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
+
+// vertex data representation
+struct Vertex
+{
+	// vertex position
+	glm::vec3 Position;
 };
 
 //indices of the locations of queue families (if they exist at all)

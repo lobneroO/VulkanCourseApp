@@ -25,8 +25,6 @@ public:
 private:
     void CreateVertexBuffer(std::vector<Vertex>* vertices);
 
-    uint32_t FindMemoryTypeIndex(uint32_t allowedTypes, VkMemoryPropertyFlags propertyFlags);
-
 private:
     uint32_t VertexCount = 0;
     VkBuffer VertexBuffer;                  // the layout of the buffer, i.e. header, only information

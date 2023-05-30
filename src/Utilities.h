@@ -5,6 +5,8 @@
 #include <cstring>
 #include <filesystem>
 
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
 namespace fs = std::filesystem;
@@ -113,4 +115,70 @@ static fs::path GetShaderPath()
 	shaderPath /= "shaders";
 
 	return shaderPath;
+}
+
+static uint32_t FindMemoryTypeIndex(VkPhysicalDevice physicalDevice, uint32_t allowedTypes, VkMemoryPropertyFlags propertyFlags)
+{
+	// get properties of _physical_ device memory
+    VkPhysicalDeviceMemoryProperties memProps;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProps);
+
+    for(uint32_t i = 0; i < memProps.memoryTypeCount; i++)
+    {
+        // sequentially go through every bit and check if it is set
+        // if it is, also check the property flags we require are set, but no others are set
+        if((allowedTypes & (1 << i))
+            && (memProps.memoryTypes[i].propertyFlags & propertyFlags) == propertyFlags)
+        {
+            // this memory type is valid, therefore return the index
+            return i;
+        }
+    }
+
+    return 0;
+}
+
+static void CreateBufferAndAllocateMemory(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkDeviceSize bufferSize, VkBufferUsageFlags bufferUsageFlags,
+	VkMemoryPropertyFlags bufferProperties, VkBuffer* buffer, VkDeviceMemory* bufferMemory)
+{
+	// the VkBuffer is just a description of the buffer contents, not the actual memory itself!
+    // therefore, no memory is created/allocated here
+    VkBufferCreateInfo createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    createInfo.size = bufferSize;
+    createInfo.usage = bufferUsageFlags;
+    createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkResult result = vkCreateBuffer(logicalDevice, &createInfo, nullptr, buffer);
+
+    if(result != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to create vertex buffer!");
+    }
+
+    // get the buffer memory requirements
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(logicalDevice, *buffer, &memRequirements);
+
+    // allocate memory to buffer
+    VkMemoryAllocateInfo memAllocInfo = {};
+    memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memAllocInfo.allocationSize = memRequirements.size;
+    // index of memory type on physical device that has required bit flags VK_MEMORY_PROPERTY_
+    // HOST_VISIBLE_BIT:    CPU can interact with memory
+    // HOST_COHERENT_BIT:   allows placement of data straight into buffer after mapping
+    //                          (otherwise would need flushes and memory invalidating)
+	// DEVICE_VISIBLE_BIT:	only GPU can interact with memory, has to be copied over from other buffer from CPU
+    memAllocInfo.memoryTypeIndex = FindMemoryTypeIndex(physicalDevice, memRequirements.memoryTypeBits,
+        bufferProperties);
+
+    // allocate memory _on_ VkDeviceMemory
+    result = vkAllocateMemory(logicalDevice, &memAllocInfo, nullptr, bufferMemory);
+    if(result != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to allocate vertex buffer memory!");
+    }
+
+    // bind memory _to_ given vertex buffer
+    vkBindBufferMemory(logicalDevice, *buffer, *bufferMemory, 0);
 }

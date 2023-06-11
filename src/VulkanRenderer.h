@@ -26,6 +26,8 @@ public:
 
 	int32_t Init(GLFWwindow* newWindow);
 
+	void UpdateModel(const glm::mat4& modelMatrix);
+
 	void Draw();
 
 	void CleanUp();

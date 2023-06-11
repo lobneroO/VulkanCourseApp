@@ -7,6 +7,8 @@
 
 #include "VulkanRenderer.h"
 
+#include <glm/gtc/matrix_transform.hpp>
+
 GLFWwindow* Window = nullptr;
 VulkanRenderer Renderer;
 
@@ -41,10 +43,27 @@ int main()
 		return EXIT_FAILURE;
 	}
 
+	float angle_deg = 0.0f;
+	float deltaTime_s = 0.0f;
+	float lastTime = 0.0f;
+
 	//loop until closed
 	while (!glfwWindowShouldClose(Window))
 	{
 		glfwPollEvents();
+
+		float now = glfwGetTime();
+		deltaTime_s = now - lastTime;
+		lastTime = now;
+
+		angle_deg += 10.f * deltaTime_s;
+		if(angle_deg > 360)
+		{
+			angle_deg -= 360;
+		}
+
+		Renderer.UpdateModel(glm::rotate(glm::mat4(1.f), glm::radians(angle_deg), glm::vec3(0.f, 0.f, 1.f)));
+
 		Renderer.Draw();
 	}
 

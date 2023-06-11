@@ -98,6 +98,11 @@ int32_t VulkanRenderer::Init(GLFWwindow* newWindow)
 	return 0;
 }
 
+void VulkanRenderer::UpdateModel(const glm::mat4& modelMatrix)
+{
+	ModelViewProjectMatrix.Model = modelMatrix;
+}
+
 void VulkanRenderer::Draw()
 {
 	// 1. Get next available image to draw to and set something to signal

@@ -68,15 +68,29 @@ int32_t VulkanRenderer::Init(GLFWwindow* newWindow)
 		Mesh firstMesh = Mesh(MainDevice.PhysicalDevice, MainDevice.LogicalDevice, GraphicsQueue,
 			GraphicsCommandPool, &firstMeshVertices, &meshIndices);
 
+		/*
 		std::vector<Vertex> secondMeshVertices = {
 			{{0.9, -0.4, 0.0},		{0.0f, 0.0f, 1.0f}},
 			{{0.9, 0.4, 0.0},		{0.0f, 1.0f, 0.0f}},
 			{{0.1, 0.4, 0.0},		{1.0f, 0.0f, 0.0f}},
 			{{0.1, -0.4, 0.0},		{1.0f, 1.0f, 0.0f}}
+		};*/
+
+		std::vector<Vertex> secondMeshVertices = {
+			{{0.3, -0.4, 0.0},		{1.0f, 1.0f, 0.0f}},
+			{{0.05, 0.1, 0.0},		{1.0f, 0.0f, 1.0f}},
+			{{0.5, 0.4, 0.0},		{0.0f, 1.0f, 0.0f}},
+			{{0.95, 0.1, 0.0},		{0.0f, 1.0f, 1.0f}},
+			{{0.7, -0.4, 0.0},		{0.0f, 0.0f, 1.0f}}
+		};
+		std::vector<uint32_t> secondMeshIndices = {
+			2, 1, 0,
+			4, 2, 0,
+			4, 3, 2
 		};
 
 		Mesh secondMesh = Mesh(MainDevice.PhysicalDevice, MainDevice.LogicalDevice, GraphicsQueue,
-			GraphicsCommandPool, &secondMeshVertices, &meshIndices);
+			GraphicsCommandPool, &secondMeshVertices, &secondMeshIndices);
 
 		MeshList.push_back(firstMesh);
 		MeshList.push_back(secondMesh);

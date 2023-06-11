@@ -38,11 +38,18 @@ private:
 	void CreateSurface();
 	void CreateSwapChain();
 	void CreateRenderPass();
+	void CreateDescriptorSetLayout();
 	void CreateGraphicsPipeline();
 	void CreateFramebuffers();
 	void CreateCommandPool();
 	void CreateCommandBuffers();
 	void CreateSynchronizationObjects();
+
+	void CreateUniformBuffers();
+	void CreateDescriptorPool();
+	void CreateDescriptorSets();
+
+	void UpdateUniformBuffer(const uint32_t& imageIndex);
 
 	// -  record functions
 	void RecordCommands();
@@ -99,6 +106,13 @@ private:
 	// Scene Objects
 	std::vector<Mesh> MeshList;
 
+	// Scene Settings
+	struct MatrixSetup {
+		glm::mat4 Projection;
+		glm::mat4 View;
+		glm::mat4 Model;
+	} ModelViewProjectMatrix;
+
 	uint32_t CurrentFrame = 0;
 
 	// vulkan components
@@ -123,6 +137,15 @@ private:
 	std::vector<VkFramebuffer> SwapchainFramebuffers;		//one framebuffer per swapchain image
 	std::vector<VkCommandBuffer> CommandBuffers;
 
+	// - Descriptors
+	VkDescriptorSetLayout DescriptorSetLayout;
+
+	std::vector<VkDescriptorSet> DescriptorSets;
+
+	// one uniform buffer for every swapchain image
+	std::vector<VkBuffer> UniformBuffer;
+	std::vector<VkDeviceMemory> UniformBufferMemory;
+
 	// - Pipeline
 	VkPipeline GraphicsPipeline;
 	VkPipelineLayout PipelineLayout;
@@ -130,6 +153,7 @@ private:
 
 	// - Pools
 	VkCommandPool GraphicsCommandPool;
+	VkDescriptorPool DescriptorPool;
 
 	// - Utility
 	VkFormat SwapchainImageFormat;

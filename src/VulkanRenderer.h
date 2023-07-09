@@ -109,11 +109,10 @@ private:
 	std::vector<Mesh> MeshList;
 
 	// Scene Settings
-	struct MatrixSetup {
+	struct UboViewProjectionSetup {
 		glm::mat4 Projection;
 		glm::mat4 View;
-		glm::mat4 Model;
-	} ModelViewProjectMatrix;
+	} ViewProjectionMatrix;
 
 	uint32_t CurrentFrame = 0;
 
@@ -160,6 +159,16 @@ private:
 	// - Utility
 	VkFormat SwapchainImageFormat;
 	VkExtent2D SwapchainResolution;
+
+	// - Memory management
+	// Uniformbuffers are stored as a large array, but their size (for look at)
+	// is not the size of the underlying object, like the modelmatrix,
+	// but a multiple of the MinUniformBufferOffset (in bytes), also called a block
+	// Also: if the uniform buffer is bigger than the offset, it will take up
+	// 		multiple blocks until it fits.
+	// The difference between the buffer size and the block(s) size(s) will be left empty
+	VkDeviceSize MinUniformBufferOffset_bytes;
+	size_t ModelUniformAlignment;
 
 	// - Synchronisation
 	std::vector<VkSemaphore> ImagesAvailable;

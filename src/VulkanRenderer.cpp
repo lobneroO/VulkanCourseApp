@@ -42,14 +42,13 @@ int32_t VulkanRenderer::Init(GLFWwindow* newWindow)
 		CreateCommandPool();
 
 		// setup model, view and projection matrix
-		ModelViewProjectMatrix.Projection = glm::perspective(glm::radians(45.0f),
+		ViewProjectionMatrix.Projection = glm::perspective(glm::radians(45.0f),
 			(float)(SwapchainResolution.width / SwapchainResolution.height), 0.1f, 100.f);
-		ModelViewProjectMatrix.View = glm::lookAt(glm::vec3(3.0f, 1.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+		ViewProjectionMatrix.View = glm::lookAt(glm::vec3(3.0f, 1.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f),
 			glm::vec3(0.0, 1.0f, 0.0f));
-		ModelViewProjectMatrix.Model = glm::mat4(1.0f);
 
 		// invert the y axis for glm to work correctly
-		ModelViewProjectMatrix.Projection[1][1] *= -1;
+		ViewProjectionMatrix.Projection[1][1] *= -1;
 
 		// create a mesh
 		// vertex data
@@ -114,7 +113,8 @@ int32_t VulkanRenderer::Init(GLFWwindow* newWindow)
 
 void VulkanRenderer::UpdateModel(const glm::mat4& modelMatrix)
 {
-	ModelViewProjectMatrix.Model = modelMatrix;
+	// TODO: set for correct model
+	// ModelViewProjectMatrix.Model = modelMatrix;
 }
 
 void VulkanRenderer::Draw()
@@ -909,7 +909,7 @@ void VulkanRenderer::CreateSynchronizationObjects()
 void VulkanRenderer::CreateUniformBuffers()
 {
 	// buffer size will be size of all three matrices (will offset to access)
-	VkDeviceSize bufferSize = sizeof(MatrixSetup);
+	VkDeviceSize bufferSize = sizeof(ViewProjectionMatrix);
 
 	// one uniform buffer for each image (and by extension, command buffer)
 	UniformBuffer.resize(SwapchainImages.size());
@@ -982,7 +982,7 @@ void VulkanRenderer::CreateDescriptorSets()
 		// offset in data (e.g. if we only wanted to bind second half of data)
 		mvpBufferInfo.offset = 0;
 		//
-		mvpBufferInfo.range = sizeof(MatrixSetup);
+		mvpBufferInfo.range = sizeof(UboViewProjectionSetup);
 
 		// data about connection between binding and buffer
 		VkWriteDescriptorSet mvpSetWrite = {};
@@ -1009,8 +1009,8 @@ void VulkanRenderer::CreateDescriptorSets()
 void VulkanRenderer::UpdateUniformBuffer(const uint32_t& imageIndex)
 {
 	void* data = nullptr;
-	vkMapMemory(MainDevice.LogicalDevice, UniformBufferMemory[imageIndex], 0, sizeof(MatrixSetup), 0, &data);
-	memcpy(data, &ModelViewProjectMatrix, sizeof(MatrixSetup));
+	vkMapMemory(MainDevice.LogicalDevice, UniformBufferMemory[imageIndex], 0, sizeof(UboViewProjectionSetup), 0, &data);
+	memcpy(data, &ViewProjectionMatrix, sizeof(UboViewProjectionSetup));
 	vkUnmapMemory(MainDevice.LogicalDevice, UniformBufferMemory[imageIndex]);
 }
 
@@ -1031,7 +1031,7 @@ void VulkanRenderer::RecordCommands()
 	renderPassBeginInfo.renderArea.extent = SwapchainResolution;
 	// the load op means a clear at the start, therefore clear values are needed
 	VkClearValue clearValues[] = {
-		{0.6f, 0.65f, 0.4f, 1.0f}
+		{{{0.6f, 0.65f, 0.4f, 1.0f}}}
 	};
 	renderPassBeginInfo.pClearValues = clearValues;
 	renderPassBeginInfo.clearValueCount = 1;
@@ -1123,6 +1123,81 @@ void VulkanRenderer::GetPhysicalDevice()
 			break;
 		}
 	}
+
+	// get properties of physical device
+	VkPhysicalDeviceProperties deviceProps;
+	vkGetPhysicalDeviceProperties(MainDevice.PhysicalDevice, &deviceProps);
+
+	// a block size for uniform buffers. we may need several blocks for one buffer.
+	MinUniformBufferOffset_bytes = deviceProps.limits.minUniformBufferOffsetAlignment;
+}
+
+void VulkanRenderer::AllocateDynamicBufferTransferSpace()
+{
+	/*
+		assume buffer offset is 32 (total number, represented as 8 bits here)
+		00100000		= 32
+
+		our modelmatrix can take up blocks to be a multiple of 32, valid are:
+		00100000		= 32
+		01000000		= 64
+		01100000		= 96
+		10000000		= 128
+		10100000		= 160
+		11000000		= 192
+		11100000		= 224
+
+		i.e. if our model matrix agrees to a mask of
+		11100000, then it perfectly fills the block(s)
+
+		to get this mask based on the actual minimum alignment,
+		just subtract 1 and invert:
+					00100000
+		-1 = 	00011111
+		~  =		11100000
+
+		now it works for the "perfect" sizes, using an & operator will always
+		give us the size of the matrix
+		e.g. for 64:
+		11100000
+		01000000
+		&
+		01000000
+
+		however, if the matrix has a size with a bit at 1, where the mask has 0, e.g. 66
+		11100000
+		01000010
+		&
+		01000000
+
+		we would get a 64 sized block for 66 sized matrix, which obviously is based
+		instead, we would need 96 to cover the matrix with our 32 bit block sizes
+
+		therefore, add the block size to the model matrix size and subtract 1 from that
+		then, in out 66 example, we get:
+		01000010
+		+ block size
+		01100010
+		- 1
+		01100001
+		now use & on block size and matrix size
+		11100000
+		01100001
+		&
+		01100000 = 96
+
+		now if the matrix was 64 instead of 66:
+		01000000
+		+ block size
+		01100000
+		-1
+		01011111
+		& mask
+		01000000 = 64, i.e. our wanted alignment
+	*/
+
+	ModelUniformAlignment = (sizeof(UboModelSetup) + MinUniformBufferOffset_bytes - 1)
+		& ~(MinUniformBufferOffset_bytes - 1);
 }
 
 bool VulkanRenderer::CheckInstanceExtensionSupport(std::vector<const char*>* checkExtensions)

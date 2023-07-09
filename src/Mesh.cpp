@@ -14,11 +14,24 @@ Mesh::Mesh(const VkPhysicalDevice& newPhysicalDevice, const VkDevice& newDevice,
     LogicalDevice = newDevice;
     CreateVertexBuffer(transferQueue, transferCommandPool, vertices);
     CreateIndexBuffer(transferQueue, transferCommandPool, indices);
+
+    // set to identity by default
+    ModelMatrix.ModelMatrix = glm::mat4(1.f);
 }
 
 Mesh::~Mesh()
 {
 
+}
+
+void Mesh::SetModelMatrix(const glm::mat4& matrix)
+{
+    ModelMatrix.ModelMatrix = matrix;
+}
+
+UboModelSetup Mesh::GetModelMatrix() const
+{
+    return ModelMatrix;
 }
 
 uint32_t Mesh::GetVertexCount() const
